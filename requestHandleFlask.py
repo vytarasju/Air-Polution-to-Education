@@ -23,7 +23,8 @@ def get_hbase_data():
         # Construct the row key using the country code
         row_key = country_code.upper()
 
-        # Retrieve a connection from the pool
+        # Retrieve a connection fro
+        # m the pool
         with connection_pool.connection() as connection:
             table = connection.table('AQ')
             column_family = "data"

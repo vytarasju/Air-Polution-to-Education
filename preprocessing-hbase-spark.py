@@ -2,6 +2,8 @@ import happybase
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, expr, mean, round
 import matplotlib.pyplot as plt
+import seaborn as sns
+from scipy.stats import linregress
 
 #!!!To use HAPPYBASE start thrift server with hbase-daemon start thrift
 """PREPROCESSING BEGIN"""
@@ -32,7 +34,9 @@ education_worldbank_selected = education_worldbank_selected.melt(
     valueColumnName='Value'
 )
 # Pivot the DataFrame with Indicator Names as columns
-education_worldbank_selected = education_worldbank_selected.groupBy("Country Code", "Year").pivot("Indicator Name").agg(expr("first(Value)")).withColumn("Year", col("Year").cast("int"))
+education_worldbank_selected = education_worldbank_selected.groupBy("Country Code", "Year").pivot("Indicator Name").agg(expr("first(Value)")) \
+    .withColumn("Year", col("Year").cast("int"))
+
 # Merging DataFrames on 'Country Code' and 'Period'
 merged_data = education_worldbank_selected.join(pollution_selected,
                                                 (education_worldbank_selected['Country Code'] == pollution_selected['Country']) &
@@ -47,9 +51,6 @@ merged_data_numeric = merged_data.drop('Country', 'Area')
 merged_data_pd = merged_data.toPandas()
 merged_data_numeric_pd = merged_data_numeric.toPandas()
 
-correlation_matrix = merged_data_numeric_pd.corr()['AQ']
-filtered_correlation = correlation_matrix[abs(correlation_matrix) > 0.4].drop('AQ')
-
 def plotCorrelation():
     plt.figure(figsize=(12, 15))
     filtered_correlation.plot(kind='barh', color='skyblue')
@@ -59,8 +60,29 @@ def plotCorrelation():
     plt.tight_layout()  # Ensures that the labels fit within the figure
     plt.savefig('graphic.png')
 
-# feature_highlight = 'School enrollment, secondary, female (% gross)'
-# data_regression = merged_data_pd[['AQ', feature_highlight]].dropna()1
+correlation_matrix = merged_data_numeric_pd.corr()['AQ']
+filtered_correlation = correlation_matrix[abs(correlation_matrix) > 0.4].drop('AQ')
+
+def plotLinReg(y_name, linear_regression):
+  plt.figure(figsize=(10, 6))
+  sns.scatterplot(x='AQ', y=y_name, data=data_regression, color='blue')
+  plt.plot(data_regression['AQ'], linear_regression.intercept + linear_regression.slope * data_regression['AQ'], color='red', label='Regression Line')
+
+  # Annotate the plot with regression information
+  plt.annotate(f"Slope: {linear_regression.slope:.3f}\nIntercept: {linear_regression.intercept:.3f}\nR-squared: {linear_regression.rvalue**2:.3f}\nP-value: {linear_regression.pvalue:.3f}\nStandard error: {linear_regression.stderr:.3f}",
+              xy=(0.05, 1.05), xycoords='axes fraction', fontsize=10, bbox=dict(boxstyle="round", alpha=0.1), color='black')
+
+  plt.title('Scatter Plot with Regression Line')
+  plt.xlabel('PM2.5')
+  plt.ylabel(y_name)
+  plt.legend()
+  plt.tight_layout()
+  plt.savefig('graphic.png')
+
+feature_highlight = "Population ages 0-14 (% of total population)"
+data_regression = merged_data_pd[['AQ', feature_highlight]].dropna()
+linear_regression = linregress(data_regression['AQ'], data_regression[feature_highlight])
+plotLinReg(feature_highlight, linear_regression)
 """ANALYSIS END"""
 
 """DBMS BEGIN"""
@@ -96,5 +118,5 @@ pollution_selected_mean_pd = pollution_selected_mean.toPandas()
 table_EDU = 'EDU_Secondary_Female'
 education_worldbank_selected = education_worldbank_selected.groupBy("Country Code").agg(round(mean("Secondary education, general pupils (% female)"), 2).alias("Mean_Secondary_Female"))
 education_worldbank_selected_pd = education_worldbank_selected.toPandas()
-WriteHBase(table_EDU, education_worldbank_selected_pd)
+# WriteHBase(table_EDU, education_worldbank_selected_pd)
 """DBMS END"""
